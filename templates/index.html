@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Sales Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .form-container {
+            background-color: #f4f4f4;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .form-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .form-row select {
+            width: 30%;
+            padding: 10px;
+        }
+
+        .error {
+            color: red;
+            background-color: #ffeeee;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        .info {
+            background-color: #e7f3fe;
+            border-left: 6px solid #2196F3;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+
+        .notice {
+            background-color: #ffffcc;
+            border-left: 6px solid #ffeb3b;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table,
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .submit-btn:hover {
+            background-color: #45a049;
+        }
+
+        .results-header {
+            margin-top: 20px;
+            font-size: 1.2em;
+            color: #333;
+        }
+
+        .help-text {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .negative-value {
+            color: #d32f2f;
+        }
+
+        .metric-total {
+            font-weight: bold;
+            background-color: #f9f9f9;
+        }
+
+        .total-row {
+            font-weight: bold;
+            background-color: #edf7ed;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Sales Dashboard</h1>
+
+    <div class="form-container">
+        <form method="POST">
+            <div class="form-row">
+                <select name="start_month" required>
+                    <option value="">Select Start Month</option>
+                    {% for month in months %}
+                    <option value="{{ month }}">{{ month.capitalize() }}</option>
+                    {% endfor %}
+                </select>
+
+                <select name="end_month" required>
+                    <option value="">Select End Month</option>
+                    {% for month in months %}
+                    <option value="{{ month }}">{{ month.capitalize() }}</option>
+                    {% endfor %}
+                </select>
+
+                <select name="store">
+                    <option value="">All Stores</option>
+                    {% for store in stores %}
+                    <option value="{{ store }}">{{ store }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="help-text">
+                <p>Select "All Stores" to view total sales by store across the selected months.</p>
+            </div>
+
+            <button type="submit" class="submit-btn">Analyze Sales</button>
+        </form>
+    </div>
+
+    {% if error %}
+    <div class="error">
+        {{ error }}
+    </div>
+    {% endif %}
+
+    {% if accessed_files %}
+    <div class="info">
+        Data accessed from month(s): {{ ', '.join(accessed_files) }}
+    </div>
+    {% endif %}
+
+    {% if view_type == "department" and dept_metrics %}
+    <div class="results-header">Department Financial Metrics {% if time_period %}{{ time_period }}{% endif %}</div>
+    <table>
+        <thead>
+            <tr>
+                <th>Department</th>
+                {% for metric in metrics %}
+                <th>{{ metric }}</th>
+                {% endfor %}
+                <th>Final Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for dept, values in dept_metrics.items() %}
+            <tr>
+                <td>{{ dept.title() }}</td>
+                {% for metric in metrics %}
+                <td {% if metric in ['Refund', 'Discount' ] and values[metric] !=0 %}class="negative-value" {% endif %}>
+                    ${{ "{:,.2f}".format(values[metric]) }}
+                </td>
+                {% endfor %}
+                {% set total = values['Sales'] - values.get('Refund', 0) - values.get('Discount', 0) +
+                values.get('Promotion', 0) %}
+                <td class="metric-total">${{ "{:,.2f}".format(total) }}</td>
+            </tr>
+            {% endfor %}
+
+            <!-- Totals row -->
+            <tr class="total-row">
+                <td>TOTAL</td>
+                {% for metric in metrics %}
+                {% set metric_total = dept_metrics.values()|map(attribute=metric)|sum %}
+                <td {% if metric in ['Refund', 'Discount' ] and metric_total !=0 %}class="negative-value" {% endif %}>
+                    ${{ "{:,.2f}".format(metric_total) }}
+                </td>
+                {% endfor %}
+                {% set grand_total = dept_metrics.values()|map(attribute='Sales')|sum -
+                dept_metrics.values()|map(attribute='Refund')|sum -
+                dept_metrics.values()|map(attribute='Discount')|sum +
+                dept_metrics.values()|map(attribute='Promotion')|sum %}
+                <td class="metric-total">${{ "{:,.2f}".format(grand_total) }}</td>
+            </tr>
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% if view_type == "store" and store_metrics %}
+    <div class="results-header">Financial Metrics by Store {% if time_period %}{{ time_period }}{% endif %}</div>
+    <div class="notice">
+        Showing combined sales metrics for all departments in each store.
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Store</th>
+                {% for metric in metrics %}
+                <th>{{ metric }}</th>
+                {% endfor %}
+                <th>Final Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for store, values in store_metrics.items() %}
+            <tr>
+                <td>{{ store }}</td>
+                {% for metric in metrics %}
+                <td {% if metric in ['Discount', 'Refund' ] and values[metric] !=0 %}class="negative-value" {% endif %}>
+                    ${{ "{:,.2f}".format(values[metric]) }}
+                </td>
+                {% endfor %}
+                {% set total = values['Net Sales'] - values.get('Discount', 0) - values.get('Refund', 0) +
+                values.get('Promotion', 0) %}
+                <td class="metric-total">${{ "{:,.2f}".format(total) }}</td>
+            </tr>
+            {% endfor %}
+
+            <!-- Totals row -->
+            <tr class="total-row">
+                <td>TOTAL</td>
+                {% for metric in metrics %}
+                {% set metric_total = store_metrics.values()|map(attribute=metric)|sum %}
+                <td {% if metric in ['Discount', 'Refund' ] and metric_total !=0 %}class="negative-value" {% endif %}>
+                    ${{ "{:,.2f}".format(metric_total) }}
+                </td>
+                {% endfor %}
+                {% set grand_total = store_metrics.values()|map(attribute='Sales')|sum -
+                store_metrics.values()|map(attribute='Refund')|sum -
+                store_metrics.values()|map(attribute='Discount')|sum +
+                store_metrics.values()|map(attribute='Promotion')|sum %}
+                <td class="metric-total">${{ "{:,.2f}".format(grand_total) }}</td>
+            </tr>
+        </tbody>
+    </table>
+    {% endif %}
+</body>
+
+</html>
